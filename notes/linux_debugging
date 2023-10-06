@@ -1,0 +1,808 @@
+Kernel:
+
+ Main component of OS (Kernel + libraries (.so files) 
+   
+ 
+  - Controls all interaction with hardware
+  - provides services to user mode programs (system calls)
+                                                |
+                                           files, sockets, etc
+ 
+  - controls access to the two main resources: CPU and RAM
+
+
+   Kernel:                           +---> restrict (permissions, security)
+       |                             |
+       +----> Resource Management ---+--> Control access (arbitration)
+                  |
+           +------+------+-------+
+          CPU     RAM   DISK    Hardware
+           |       |     |          |
+       Scheduling  |    FileSystems |
+                   |                |
+                  Paging           Devices
+ 
+ 
+
+  Kernel updates frequently:
+
+    Old: 2.4 (obsolete - like Windows 95)
+    Common: 2.6 (old, but stable)  2.6.0 -- 2.6.35
+    Modern: 3.x (3.0-3.19)
+    New:    4.0 (= 3.20)
+
+  uname -r tells you the version: 
+
+[morpheus@localhost ~]$ uname
+Linux
+[morpheus@localhost ~]$ uname -r
+3.11.10-301.fc20.x86_64
+|  |  |       |    |
+Mai|  Bugfix  |    Architecture
+   |          +-> Distribution
+   Feature
+
+[morpheus@localhost ~]$ uname -m
+x86_64
+
+
+By convention kernel is in /boot:
+
+[morpheus@localhost boot]$ ls -l              (compilation settings)
+total 36021                                      |
+-rw-r--r--. 1 root root   131847 Dec  5  2013 config-3.11.10-301.fc20.x86_64
+drwxr-xr-x. 6 root root     1024 Jul 24  2014 grub2  <= boot loader 
+-rw-------  1 root root 10017267 Feb  1 19:43 initramfs-3.11.10-301.fc20.x86_64.img
+-rw-r--r--. 1 root root   585107 Dec 11  2013 initrd-plymouth.img
+-rwxr-xr-x. 1 root root  5139320 Dec  5  2013 vmlinuz-3.11.10-301.fc20.x86_64
+                                                |
+                                                 vm: virtual memory
+                                                  z: compressed.
+
+The core of the kernel is the vmlinuz
+
+  Loaded by boot loader
+  Uncompressed in memory and loaded to be resident
+
+   Kernel also loads any number of drivers - modules
+
+
+   These modules have to be EXACTLY compatible with kernel version
+
+
+ On all systems that are "Linux" the kernel is roughly the same
+   (up to the version) but each system will likely have own drivers (modules, "lsmod")
+
+
+
+   Kernel - when it does scheduling - sees ONLY threads. NOT processes.
+
+    - THERE IS NO SUCH THING AS A PROCESS.
+
+
+   Process:  Instance of a running program which contains  
+   --------  handles to resources - VM image (=>file descriptors, open devices/sockets..)
+             Has at least ONE thread called the MAIN THREAD.
+
+   Thread: Conceptual: Instance of a running "execution unit" ("task")
+   ------- Actual: For a given time, all register state of the CPU belongs to thread.
+                    |
+                    +--> SET OF REGISTER VALUES.
+                            |
+                            +---> execution: EIP/RIP 
+                            +---> stack: ESP/RSP (+ EBP/RBP)
+
+
+     All thread states (register values) point to locations or data from
+     the containing PROCESS.
+
+     "each thread has own stack" : each thread focuses on own area in shared VM.
+
+        All threads use same heap: all threads look at same heap area in shared VM
+
+      Two problems:
+           - Concurrency: When 2+ threads access same resource (memory address)
+           - Corruption: When a thread writes to memory outside its own "region" - onto another thread region.
+
+
+ 
+   A "PID" in Linux is really a "TGID" - Thread Group Identifier.
+   To keep it simple: PID is also the TID of the main thread.
+    The main thread is SPECIAL because if it ends - all other threads are terminated.
+
+    Most user mode commands "lie" to you and show only main threads or kernel threads.
+
+
+   - Command shows main threads or kernel threads only
+   - kernel threads (ps -ef: PPID 2)
+                    (ps aux: mem/VSZ/RSS: 0)
+                    (both ps: [ ] by convention)
+
+
+
+ -----------------------------------------------------------------
+
+ 
+
+  32-bit: 4G
+  64-bit: 256TB ("48 bit)
+  +------------------------+-------------+
+  | 128T                                 |
+  | 1GB x Reserved  KERNEL SPACE         |
+  |_____|________________________________|
+  |     |        |         |             |
+  |     |        |         |             |
+  |     |        |         |             |
+  |  P1 x--x     |         |   P2        |
+  |        |     |         |             |
+  |        |     |         |             |
+  |        x     |         |             |
+  |              |         |             |
+  +--------------+         +-------------+
+
+
+   This design, while wasting memory (making address space of process SMALLER)
+   reaps benefits in the performance because:
+
+   A) Going from user mode to kernel mode is like going
+      from user mode thread x to thread y (same address space)
+   B) Alternative (message passing) would be expensive because
+      it requires switching address spaces.
+   c) Kernel memory is ALWAYS swapped in (resident)
+      that means more RAM utilization but greater speed.
+
+   ONE DRAWBACK IN THIS SYSTEM:
+  
+    Kernel architecture of a single shared space (MONOLITHIC)
+    is LESS STABLE because if a user mode process dies -
+    no problem. But if kernel thread dies - all kernel memory image
+    is DESTROYED. and the sysTEM PANICS!
+ 
+   Another not so minor - security. In kernel mode
+   aLL memory is shared, NO ISOLATION (like in user mode)
+   and therefore bad evil code in kernel - compromises entire system!
+
+
+ Remind:   128T
+  
+         2^47
+
+  In 64-bit we actually only use 48-bits for addressing
+   Max 64 would have been 16EB
+   With 48 Max is 256 TB
+   of which 1 bit - kernel/user - 47 bits => 128TB
+
+  10 = K
+  20 = M
+  30 = G
+  40 = T
+  50 = P
+  60 = E
+
+  What is left: powers of 2
+
+   7 = 128, 4 = 16 6 = 64 
+
+-----------------------------------------
+
+Multitasking:
+
+  We have more than one thread that wants to run on
+  limited resources.
+ 
+  General case:   m threads on n cpus/cores where m > n
+
+   if (m < = n) = no problem.
+
+  Specific case: m = 2, n =1
+
+
+   ------------------
+
+  Linux does not care about HyperThread/Core/Processor
+   All cores/HT/Processor appear as "VIRTUAL PROCESSORS".
+
+  HyperThread: (Intel "i7")
+
+     - We take another set of registers and another ALU
+       allowing two threads concurrency IF:
+           - they both use ALU 
+                 or
+           - they use different subcomponents (ALU, FPU, Load, Store)
+                 AND
+           - they are from same process  (they do not contend over caches)
+
+
+  MultiCore:   (Intel "i3/i5")
+
+    We take ALL Components up to L2 cache and duplicate them
+   
+    - Because we duplicate we can also duplicate HT
+          (Core i5 - dual/quad core
+           Core i7 - dual/quad core + Hyperthread)
+  
+    - Because components are duplicated threads can do same or different things
+    - Threads can belong to different processes (but recommended that they be same process)
+       (L2 cache is usually big enough)
+
+
+  MultiProcessor:
+
+      Duplicate everything
+
+     - any type of threads but recommended : DIFFERENT PROCESSES!
+          otherwise keeping caches in sync (for same data) is expensive
+
+ 
+ An application SHOULD be OPTIMIZED for ONE OR MORE OF THE ABOVE
+  
+   Two levels:
+  
+         - Programmatically: Design our threads so that they run better in HT/MC
+            otherwise on MP - we break our program into several processes
+  
+         - System-level: Do "thread affinity" To lock a thread into a particular core/HT or PRocessor
+
+ 
+ How can we figure out our system?
+
+  - We look at /proc/cpuinfo
+  - if we DO NOT SEE the line "cpu cores" - kernel has no multicore support(!)
+     - KERNEL NEEDS TO SUPPORT MC to better take advantage of scheduling 
+ 
+     - Support for MC is available in all 2.6 (but needs to be compiled)
+     - Support for HT + MC is available in 3.1 and later.
+
+
+   At some point the # of threads (m) will exceed the number of logical CPUs (n)
+
+   And that's when we need to MULTITASK.
+
+      - Old: Cooperative - that we wait for thread to give up CPU.
+                             |
+                             +---> either thread quits (terminates)
+                             +---> thread BLOCKS (I/O, or mutex, or lock, or other object)
+
+      - New: Preemptive:
+               - We keep a time slice ("quantum") for each thread
+               - If thread runs for more than quantum - we kick it out.
+
+   
+ 
+  - Problem: kicking out a thread
+    Solution: Rely on interrupts
+                   - service interrupt
+                   - check if we need to kick out thread (preempt)
+    Problem: there are times with no interrupts at all
+    Solution: To introduce periodic interrupt (Timer)
+ 
+     Linux supports periodic intervals of 1/100, up to 1/1000
+          (100, 250, 300, 1000 times/second)
+
+  
+     100 : less interrupts/sec, larger quantums (minimum 10ms) - good for doing more work - servers
+     ...
+     1000: more interrupts/sec, smaller quantums (1ms)   - good for responsiveness     - desktops
+
+
+    ANOTHER problem:
+
+    In both 100 and 1000 case - most timer interrupts are "spurious" or unnecessary.
+
+     tickless kernel (2.6.21)
+
+      - At times when there are no more threads to run (all are asleep)
+        timer is DISABLED = no more interrupts.
+
+           - IF I/O wakes up a thread - that is anotehr interrupt (not timer)
+           - If "phone rings" - interrupt comes from baseband chip , and so doesnt really matter that cpu is idle
+
+
+     2.6.21: we re-enble timer for 1+ threads
+     3.10+: Only for 2+ threads we re-enable timer
+
+
+   Idea: wait for timers and interrupts by "delaying" a little bit
+   so as to make them fire at the same time or very close
+
+   Any changes to the frequency, require recompilation of kernel.
+
+
+
+----------------
+
+load avg:
+
+   - uptime
+   - w | head -1
+   - top
+   - /proc/loadavg
+
+  The Load Avg is the # of threads that have been on the run queue in the last
+               1,     5, or 15 minutes
+               |      |      | 
+load average: 0.05, 0.03, 0.05
+
+
+  - If Load Avg is between 0 and # of logical CPUs: No problem
+                           # and 2#: in normal load
+                           2# and 3#: load becomes heavy
+                           4#: Load can become very heavy, to the unbearable
+
+
+  /proc:
+
+  sysrq-trigger: emulates the CTRL-ALT-SysRq + key 
+ 
+  - remember to set /proc/sys/kernel/sysrq to a bitmask which allows your key (255 works well)
+  - keys:
+            'b' - boot
+            'c' - crash (only useful if kernel hangs, but then useful from console)
+            'f' - OoM
+            'l' - list all threads in CPU/cors
+            'k' - kill
+            't' - dump all threads, also inactive
+            's' - sync all file system
+ 
+
+---
+
+Why a process crashes (and creates core):
+
+  +-Dereferencing a null pointer        (SIGSEGV 11)
+  +-reading/writing some invalid memory (SEGV/BUS 11/7)
+  +-Floating point exception (SIGFPE/8)
+  +-Illegal instruction (SIGILL/4)
+  +-Suicide (when you call abort() - SIGABRT/6)
+  |
+  +---Killed by signal
+
+Technically what kills your process is the signal, not the exception!
+
+
+   To control cores:
+   -----------------
+
+    - Kernel must be allowing cores:
+
+         - /proc/sys/kernel/core_pattern:
+             controls filename of core
+
+         - /proc/sys/kernel/core_uses_pid:
+              controls if core filename appends ".%p" for pid
+             (if 0, only latest core will be saved)
+             (if 1, pid gets appended, but may be lots of cores)
+ 
+             If core pattern != "corE" then pid is ignored.
+ 
+         - /proc/sys/kernel/pipe_limit:
+
+             a little known feature of core_pattern is that you can use
+             '|' to run a command!
+
+
+             pipe limit ensures not more than ___ commands run at same time
+
+    - User mode to allow cores:
+         - using ulimit(1) -c
+
+    - Configure core dump per process(!)
+        - /proc/$PID/coredump_filter
+ 
+          You do on the shell that creates your process
+          Default value is 0x33
+          recommended: 0xff (everything)
+          also recommended: core_pattern: /server/directory_for_crashes/core.%p.%h.%E.%t
+
+
+  Another very important file for debugging:
+
+   /proc/sys/kernel/randomize_va_space
+
+   When debugging set this value to "0"
+   so that cores can alwys be generated in an identical, predictable way.
+   If "1" or "2" address space of process will be different,
+   which will affect core dump.
+ 
+
+-----------
+
+Compilation:
+
+
+   -D_DEBUG_    and use #ifdef _DEBUG_ in your code
+
+ example:
+
+#ifdef DEBUG
+    #define dprintf printf
+#else
+    #define dprintf(x)
+#endif
+
+
+-----------
+
+ -g2 recommended
+     -g2 and especially -g3 will increase your program size 
+         and may leak information to hackers
+
+     however:
+        a) -g2 or -g3 is ABSOLUTELY vital for gdb (debugging)
+                b) you can always use "strip"
+
+           What you do: 
+        1) create a -g3 for your purposes
+        2) strip that -g3 with "-d -x"
+           and give to customer.
+
+
+  -g2 recommended because:
+
+[root@localhost morpheus]# cc b.c -o b -g2
+[root@localhost morpheus]# objdump -d -S b | more
+         -S will show source + assembly ONLY if -g2 before
+
+
+
+0000000000400530 <main>:
+#include <stdlib.h>
+void main()
+{
+  // From here these three lines are called "PROLOG"
+  400530:       55                      push   %rbp
+  400531:       48 89 e5                mov    %rsp,%rbp
+  400534:       48 83 ec 20             sub    $0x20,%rsp
+        char c[24];
+        memset (c, 'J', 24);
+  400538:       48 8d 45 e0             lea    -0x20(%rbp) -> %rax
+  40053c:       ba 18 00 00 00          mov    $0x18,%edx     // 0x18 = 24
+  400541:       be 4a 00 00 00          mov    $0x4a,%esi     // '4a' = 'J'
+  400546:       48 89 c7                mov    %rax -> %rdi   // c
+  400549:       e8 c2 fe ff ff          callq  400410 <memset@plt>
+} // end main
+   // From here these lines are called "EPILOG"
+  40054e:       c9                      leaveq --> SP = BP; POP BP
+  40054f:       c3                      retq   --> POP EIP
+
+ PROLOG and EPILOG are ALWAYS generated for every function.
+
+   EVERY FUNCTION stores its variables in a portion of the stack
+   called a FRAME
+   The FRAMEs touch eachother.
+
+     F1
+     F2
+     F3
+     F4
+  
+   at any time, BP points to where YOUR frame begins
+                SP points to where YOUR frame ends.
+
+    Therefore:
+     BP----SP is your frame
+     BP - val is local variable in your frame
+     BP + val is some other variable in someone else (usually caller) frame
+
+
+  Calling convention:
+
+  Note hte call to memset is now:
+
+  40053c:          mov    $0x18,%edx     // 0x18 = 24
+  400541:          mov    $0x4a,%esi     // '4a' = 'J'
+  400546:          mov    %rax -> %rdi   // c
+
+
+   rdi = arg1
+   rsi = arg2
+   rdx = arg3 ("e"dx is used because this is 32-bit)
+   rcx = arg4
+   r8  = arg5
+   r9  = arg6
+ 
+   any more arguments than 6 - go on stack
+
+
+Example: calling convention
+
+0000000000400568 <main>:
+  400568:       55                      push   %rbp
+  400569:       48 89 e5                mov    %rsp,%rbp
+  40056c:       48 83 ec 20             sub    $0x20,%rsp
+;------------------------------------------------------------------
+  400570:       89 7d fc                mov    %edi,-0x4(%rbp)
+  400573:       48 89 75 f0             mov    %rsi,-0x10(%rbp)  ; rsi -> bp-10
+  400577:       48 8b 45 f0             mov    -0x10(%rbp),%rax  ; bp-10 -> rax (rax = rsi)
+  40057b:       48 83 c0 08             add    $0x8,%rax         ; rax += 8 (argv[1])
+  40057f:       48 8b 00                mov    (%rax),%rax       ; rax = *rax = *argv[1];
+  400582:       c7 04 24 07 00 00 00    movl   $0x7,(%rsp)       ; arg7=7 (on stack) = note () = *
+  400589:       41 b9 06 00 00 00       mov    $0x6,%r9d         ;arg6=6
+  40058f:       41 b8 05 00 00 00       mov    $0x5,%r8d         ;arg5=5
+  400595:       b9 04 00 00 00          mov    $0x4,%ecx         ; arg4=4
+  40059a:       ba 03 00 00 00          mov    $0x3,%edx         ; arg3=3
+  40059f:       be 02 00 00 00          mov    $0x2,%esi         ; arg2=2
+  4005a4:       48 89 c7                mov    %rax,%rdi         ; rdi = arg1 for f = *argv[1]
+
+;; f(argv[1], 2,3,4,5,6,7);
+
+  4005a7:       e8 84 ff ff ff          callq  400530 <f>
+
+
+ -O0 recommended for debugging only
+----------------------------------------
+
+
+Process runtime statistics
+----------------------------
+
+
+
+   Time:
+
+                    ps -ef
+   TIME  =  (NOW -   START) x %CPU on average
+
+
+  Memory
+
+      "Virtual Memory": Every process gets 4(3)GB or 256(128)TB for its own use
+                        (maximum limit for malloc() or new())
+
+
+       VSIZE = Total virtual memory we have allocated
+
+
+              Resident   (swapped out)   (mmap(2))       deferred allocation
+       VSIZE = RSS      +  Swap        + FileMapped    +  Lazy
+   
+
+
+VmPeak:     4232 kB  Max of VM
+VmSize:     4144 kB  Current of VM
+VmLck:         0 kB  Locked using mlock(2)
+VmPin:         0 kB  Pinned (locked)
+VmHWM:       356 kB  High-Water-Mark (Max of RSS)
+VmRSS:       356 kB  Resident
+VmData:       48 kB  Size of heap
+VmStk:       136 kB  Size of stack
+VmExe:         4 kB  Size of executable
+VmLib:      1872 kB  Size of .so files
+VmPTE:        24 kB  Size of page table entries (memory to manage memory)
+VmSwap:        0 kB  Size of VM that WAS RSS but is now swapped
+
+
+
+
+Example: Breaking on proc condition for a given process
+          (in this case: when file offset of fd $2 for process $1 exceeds minimum $3
+
+[root@localhost ~]# cat bp.sh
+#!/bin/sh
+PID=$1
+FD=$2
+MINOFF=$3
+if [[ `cat /proc/$PID/fdinfo/$FD | grep pos | cut -d: -f2` -gt $MINOFF ]]; then echo SHOULD STOP; gdb -p $PID; else echo NEVERMIND; fi
+
+
+Huge tip: prctl (PR_SET_NAME, "name", NULL, NULL);
+
+
+
+
+Hooking:
+---------
+
+ Step #1: create a library
+        - Implement void _init(void) {}
+        - Implement your matching call for whatever you hook (e.g. read)
+        - in your read, use dlsym (RTLD_NEXT,"read") to get REAL read
+        - do something before real_read
+        - call real_read (if you want)
+        - do something after real_read (if you want)
+        - return what real_read returns (or change value , if you want)
+
+  Step #2: compile
+        gcc -fPIC -c l.c -o l.o
+        ld -shared l.o -soname l.so -o l.so
+
+   Step #3: Inject:
+
+        LD_PRELOAD=.../l.so <command>
+
+
+  The technique can be used where the executable is NOT statically linked(!!!)
+        and it relies on an external symbol (...@plt)
+        
+
+
+  
+ Code injection technique useful also with <mcheck.h>
+
+#include <mcheck.h>
+void _init (void)
+{
+
+    printf ("Ni Hao\n");
+    mtrace();
+
+}
+
+void _fini (void)
+{
+    printf ("Zai Jian\n");
+
+    muntrace();
+}
+
+
+Run with:
+
+ MALLOC_TRACE=/tmp/foo LD_PRELOAD=$PWD/l.so ifconfig
+                |                     |
+              name of file         name of lib
+
+and /tmp/foo file will contain +, - or < > for malloc/free/realloc 
+
+
+
+Problem: Decipher address ,get symbol
+
+ - Step #1: Obtain /proc/.../maps
+
+ - Step #2: use grep to isolate your address
+
+Example:
+
+[root@localhost 38091]# cat syscall 
+61 0xffffffffffffffff 0x7fff08268d90 0xa 0x0 0x1 0x0 0x7fff08268cc0 0x7faf81adc3ac
+                                +--------------------------+           |
+                                |                                      |
+[root@localhost 38091]# grep 7fff0 /proc/$$/maps                       |
+7fff0824a000-7fff0826b000 rw-p 00000000 00:00 0                        |  [stack]
+7fff083ba000-7fff083bc000 r-xp 00000000 00:00 0                        |              
+                                +--------------------------------------+                          [vdso]
+[root@localhost 38091]# grep 7faf81adc3ac /proc/$$/maps
+[root@localhost 38091]# grep 7faf81adc3a /proc/$$/maps
+[root@localhost 38091]# grep 7faf81adc3 /proc/$$/maps
+[root@localhost 38091]# grep 7faf81adc /proc/$$/maps
+[root@localhost 38091]# grep 7faf81ad /proc/$$/maps
+[root@localhost 38091]# grep 7faf81a /proc/$$/maps
+7faf7b4f7000-7faf81a20000 r--p 00000000 08:03 800716                     /usr/lib/locale/locale-archive
+7faf81a20000-7faf81bd4000 r-xp 00000000 08:03 795102                     /usr/lib64/libc-2.18.so
+
+
+[root@localhost 38091]# grep 7faf81a /proc/$$/maps
+7faf7b4f7000-7faf81a20000 r--p 00000000 08:03 800716                     /usr/lib/locale/locale-archive
+7faf81a20000-7faf81bd4000 r-xp 00000000 08:03 795102                     /usr/lib64/libc-2.18.so
+## PROBLEM: Address is RELATIVE, so we have to figure out offset
+[root@localhost 38091]# perl -e 'printf ("%x\n",  0x7faf81adc3ac - 0x7faf81a20000)'
+bc3ac
+
+
+                               -offset- -dev- inode        filename
+7faf81dde000-7faf81de1000 r-xp 00000000 08:03 797239    /usr/lib64/libdl-2.18.so
+7faf81de1000-7faf81fe0000 ---p 00003000 08:03 797239    /usr/lib64/libdl-2.18.so
+7faf81fe0000-7faf81fe1000 r--p 00002000 08:03 797239    /usr/lib64/libdl-2.18.so
+7faf81fe1000-7faf81fe2000 rw-p 00003000 08:03 797239    /usr/lib64/libdl-2.18.so
+---------range----------- ||||
+                          |||+----->MAP_PRIVATE or _SHARED
+                       read|xecute
+                           |
+                           write
+
+
+
+ VSZ   = RSS + Swap  +   Lazy + file Mapped
+           |
+           |
+       +---+---+
+       |       |
+      USS     Shss
+     private   shared
+ 
+
+I want to calculate all RSS memory footprint
+
+So it is tempting to do
+
+ Sum over all processes of RSS
+
+Problem:
+
+  Sum over all process of RSS =
+  Sum over all process of private + shared
+
+   I could count shared multiple times.
+
+
+Solution : use new metric PSS
+
+PSS = Unique + Shared
+               -------
+               # shares
+
+
+
+Points:
+
+#1: MALLOC does NOT Actually MALLOC anything.
+     - it reserves an area in your process "page tables" (PTEs)
+       to use in CASE you memset that memory.
+     - Malloc will fail only if you malloc() more than your VMMax
+           - VMMax: 3GB on 32
+                    128TB on 64
+               *OR* whatever is set by ulimit -v (entire) or -d (heap)
+    
+#2: MEMSET is the one that actually COMMITS what you malloced
+      - If you memset a pointer you did not malloc -> DIE (that memory was not reserved for you)
+      - If you memset but at that point system is out of RAM ->somebody dies. Maybe you, maybe someone else (OoM Score)
+
+      - Memset always returns - but - when it doesn't - you die by signal.
+
+
+
+-------------
+
+ "Lethal signals" that generate core
+
+
+[root@localhost morpheus]# kill -l
+ 1) SIGHUP   ends proc         No core   captured   - terminal exit
+ 2) SIGINT       ends proc         No core   captured  ^C    
+ 3) SIGQUIT  ends proc         yes core  captured  ^\ 
+ 4) SIGILL   ends proc         yes core  captured  EIP points to junk code (not an instruction)
+ 5) SIGTRAP      ends proc         yes core  captured  INT 3 (breakpoint)
+ 6) SIGABRT  ends proc         yes core  captured  abort()
+ 7) SIGBUS   ends proc         yes core  captured  Memory protection exception
+ 8) SIGFPE   ends proc         yes core  captured  /0 or floating point exception
+ 9) SIGKILL  ends proc         NO CORE   NO CAPTURE - kernel: emergency or USER kill -9
+10) SIGUSR1      no effect         -------   captured  sent by user
+11) SIGSEGV  ends proc         yes core  captured  memory errors
+12) SIGUSR2  no effect         NO CORE   captured  sent by user
+13) SIGPIPE  ends proc         NO CORE   captured  "|" process dies
+14) SIGALRM  no effect         NO CORE   captured  alarm(2)
+15) SIGTERM      ends proc         NO CORE   captured  default kill command
+16) SIGSTKFLT*   ends proc         yes core  NO capture buffer overflow is detected   
+17) SIGCHLD
+18) SIGCONT    - bg/fg  
+19) SIGSTOP    - CTRL-Z 
+20) SIGTSTP    - by terminal if you are trying full screen in background
+21) SIGTTIN 
+22) SIGTTOU 
+23) SIGURG  
+24) SIGXCPU  - ulimit exception on CPU
+25) SIGXFSZ      - ulimit exception on mem
+26) SIGVTALRM   
+27) SIGPROF 
+28) SIGWINCH    
+29) SIGIO   
+30) SIGPWR    - from UPS (uninterruptible power supply to all processes)
+31) SIGSYS    - reserved
+34) SIGRTMIN
+
+
+If a buffer overflow occurs:
+------------------------------
+
+
+ A) If program is NOT OPTIMIZED
+   - you will see value of BP be very different from SP
+   - you need to look at memory around SP - also - 0x20, 0x30.. or whatever frame size is
+     with very high likelyhood you will see string data 
+      
+    Looking for ASCII: 0x30-0x39 : 0-9
+                       0x41-0x5a : A-Z
+               0x61-0x6a : a-z
+                             |
+     x/20x ($rsp - 0x20) ----+
+
+
+     -- Problem: could be non-English (e.g. Chinese)
+                 could be non-text (e.g network data)
+ 
+     -- If it is text - you look for NULL byte
+
+
+book: newandroidbook.com (ch7)
+

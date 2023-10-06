@@ -1,0 +1,139 @@
+2015-07-08:
+============
+https://docs.python.org/2/reference/datamodel.html
+
+Python object:
+
+- Every Python object has:
+    - an identity (like memory address)
+        - using "is" operator to compare the ids of two objects
+        - id() return an interger repsenting its identity (as its address)
+        - unchangeable once the object has been created
+    - a type
+        - unchangeable
+        - type()
+    - a value
+        - mutable (changeable)
+        - immutable (subtle, e.g. immutable container can contain a reference 
+            to a mutable object, and the container is called immutable)
+
+- Objects are never explicitly destroyed; however, when they become unreachable they may be garbage-collected.
+
+2015-07-09:
+=============
+package location:
+/usr/lib/pythonx.y/dist-package     #ubuntu
+/usr/lib/pythonx.y/site-package    
+
+pip list    #list packages installed 
+pip install XYZ
+pip install --upgrade XXX
+pip uninstall XYZ
+
+#specify proxy and py index source
+pip install virtualenv -i http://pypi.douban.com/simple --proxy 192.11.236.125:8000
+# or add a line in ~/.pip/pip.conf 
+
+
+#install pacakge into user-site
+pip install --install-option="--prefix=$HOME/local" package_name
+pip install packagename --user 
+
+easy_install --prefix=$HOME/local package_name
+
+install virtualenv:
+curl -O -x 192.11.236.125:8000 https://pypi.python.org/packages/source/v/virtualenv/virtualenv-13.1.0.tar.gz
+
+
+put it in dir like local
+tar xvfz virtualenv-X.X.tar.gz 
+
+2015-07-13
+===========
+List comprehensions: lc.py 
+
+seq = ['one', 'two', 'three']
+
+def _treatment(pos, element):
+    return '%d: %s' % (pos, element)
+
+[_treatment(i, el) for i, el in enumerate(seq)]
+
+Iterator is a object that implements a protocol of iterator based on two methodes:
+- next      # return next item
+- __iter__  # return iterator itself
+
+2015-07-14
+=============
+Generator/Iterator:
+
+Iterator is less used alone, instead, can be used in a generator.
+When needing to return a sequence or a function used in loop, consider generator.
+    - pros
+        - when sequence is large, using generator that returns an element once invoked, no memory is needed to allocate in advance.
+
+e.g. fibnacci, fib.py
+
+def fibnacci():
+    a, b = 0, 1
+    while True:
+        yield b
+        a, b = b, a + b
+
+fib = fibnacci()
+l = [fib.next() for i in range(10)]
+
+generator can be like this (genexp):
+    - iter = (x**2 for x in range(10) if x % 2 == 0)
+      for el in iter:
+        print el  
+
+      like list comphehension, just use () instead of [], it generates a value oce invoked, not calculate all values in advance.
+
+the above fibnacci function can return endless of times, but a value once, and it doesn't have allocated memory in advance.
+
+yield
+    - if a function include yield, it may have the following method:
+        - next()
+        - send() # send value to yield express, e.g. psychologist.py
+        - throw()
+        - close()
+
+a template of generator:
+
+def my_generator():
+    try:
+        yield 'something'
+    except ValueError:
+        yield 'dealing with the exception'
+    finally:
+        print "ok, let's clean"
+
+>>> gen = my_generator()
+>>> gen.next()
+'something'
+>>>gen.throw(ValueError('mean mean mean'))
+'dealing with the exception'
+>>> gen.close()
+'ok, let's clean'
+>>> gen.next()
+Traceback ...
+StopIteration
+
+------------------------
+value = raw_input().strip()   # left/right strip all \s (\t space ) in input
+value.split()                 # return a list
+
+-------------------------
+install 3-party package
+
+Method 1:
+    1) download tar, untar
+    2) python setup.py install
+
+Method 2: easy_install
+    easy_install packagename
+
+Method 3:
+    pip install package
+

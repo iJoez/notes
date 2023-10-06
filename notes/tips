@@ -1,0 +1,281 @@
+2015-06-02
+
+    - shell
+        - $$ - current pid, normally is shell
+        - if [ $var -eq 10 ] 
+          then 
+            commands
+          elif 
+            commands
+          else 
+            command 
+          fi 
+        - [ condition ] && commands  # if condiftion is true, execute commands.
+            [ -f /var/run/dhcpd.pid ] && rm /var/run/dhcpd.pid 
+        - [ condition ] || commands  # if condiftion is false, execute commands.
+        - integer test: -eq, -ne, -gt, -lt, -ge, -le, 
+            if [ $var -gt $var1 ]
+        - string test: -z (empty string?), -n(non-empty string)
+            if [[ $a = $b ]] # or ==, leave space around " = ", or it will be 
+                               an assigment
+            if [[ -z $string ]]  # length is zero?
+            if [[ -n $string ]]  # not empty? 
+            if [[ $string ]]  #if string is not empty
+        - file test:
+              if [ -e $file ] # file is exiting?
+                   -f         # regular file?
+                   -d         # directory?
+                   -s         # file exited and size > 0?
+                   -x         # file is executalbe?
+                   -w         #         writable?
+        - logical expression
+            - if [ !-d $dir ] # if dir is not exiting 
+            - ! (not)
+            - if [ -z "$MYHOME -a -d $HOME/$NAME ]  # and
+            - if [ expr1 -o expre2 ]  # or
+            - test - save it from more []
+                if test $num -eq 0
+                then
+                fi
+            - assignment a=b, comparing a = b.
+            - if [ $a = '1' ] && [... ] 
+    
+    - python
+        none
+
+    - c/c++
+        crash1.c
+
+    - linux debugging
+        - strace -f -p pid ( pid is zsh that lanched the script,
+                             -f means trace child process)
+        - get zsh pid
+            - $$
+              or
+            - ps -t # show process for current terminal.
+            - in one terminal, get pid of zsh, in anthor terminal run,
+              strace -f -p #pid_of_zsh_in_first_terminal, will get all system
+                            calls invoked. 
+        
+        - strcpy(dest, source)
+        - gcc -fno-stack-protector  #disable the gcc stack protector, crash1.c
+
+    - web
+        none
+
+    - other
+        none
+
+2015-0603 
+~
+2015-0607
+None
+
+2015-0607
+    - other
+        tmux
+
+2015-0608
+
+    - shell
+        - ${var%.*}  #get var, cutting the right part to '%'
+            e.g. var="sample.jpg"
+                 name=${var%.*}  # name is "sample"
+        - ${var%%.*}  # greedy cut
+            e.g. var="hack.fun.book.txt"
+                 name=${var%%.*} # name is hack
+                 name=${var%.*} # name is hack.fun.book
+        - ${var#.*} # cutting the left to '#"
+            e.g. var="hack.fun.book.txt"
+                 name={var#*.} # name="fun.book.txt"
+        - ${var##*.} # greedy
+            e.g. var="hack.fun.book.txt"
+                 name={var##*.} # name="txt"
+                 name={var#*.} # name="fun.book.txt"
+    - python
+    - c/c++
+        - explict
+    - linux debugging
+    - web
+    - other
+
+2015-0609
+
+    - shell
+    - python
+    - c/c++
+        explicit 
+            prevent the implicit conversion by calling corresponding constructor with
+            signle argument. 2015-0609-explicit.cpp
+    - linux debugging
+    - web
+    - other
+
+2015-0610
+    None
+
+2015-0611
+    - shell
+        one program: 2015-0611-rename.sh
+        - greedy parse a varible from left to right till '.' ${var##*.}
+        - for, do/done, if/fi
+        - if [ $? -eq 0 ] # leave a blank after [ and before ]
+
+    - other
+        tmux new-session -s name
+
+2015-0612
+
+    - shell
+    - python
+    - c/c++
+    - linux debugging
+          - gdb x/4xb address_express 
+              | |||_show as bytes
+              | |\
+              | | heX
+              | repeat number
+             eXamine
+             e.g. 
+               (gdb) set var i=0x12345678
+               (gdb) x /4xb &i
+               0xbffff074: 0x78    0x56    0x34    0x12
+             help x
+
+          - gdb ptype  
+                     int i = 1337;
+                     int a[]={1,2,3};
+              (gdb) ptype i
+              type = int
+              (gdb) ptype &i
+              type = int *
+              (gdb) ptype main
+              type = int ()
+
+              (gdb) ptype a
+              type = int [3]
+              (gdb) x/12bx a
+              0xbffff050: 0x01    0x00    0x00    0x00    0x02    0x00    0x00    0x00
+              0xbffff058: 0x03    0x00    0x00    0x00
+
+              gdb) ptype &a
+              type = int (*)[3]
+
+    - web
+    - other
+
+
+2015-07-27
+
+Exception:
+- Happens when CPU executes an instruction.
+    - detected by CPU (e.g. divided by 0, segementation fault), switch to kernel.
+    - INT (e.g. system call INT 0x80, INT)
+    - what user can see is a signal, not a concrete exception.
+
+- types:
+    - Fault
+        - might be recovered
+        - excute the instruction that failed (Icur).
+        - most case
+        - e.g. page fault
+
+    - Trap
+        - caused by debugging trapping instruction (e.g. INT 3)
+        - excute the instruction following the one that failed.
+
+    - Abort
+        - termination
+
+How segv happens?
+the current thread executed by CPU has segement has:
+task_struct->mm_struct *mm;  /* mmap */, which is pointing to:
+VMA-1    VMA-2 ...   
+vm_start
+vm_end
+vm_next
+
+links the following segments:
+- .text
+- .bss
+- .heap
+- .stack
+
+If the memory to acccess is not located bwteen all vm_start and vm_end, segv happens.
+
+stack is per thread (not per process).
+
+check varials in .data and .bss in ELF:
+    - objdump -a -x -t -d ./my_test > x.objdump
+    - egrep "\.data|.bss" x*mp |sort
+
+
+2015-07-28:
+
+EIP is invalid that causes memory fault(coredump), usually by 3 situations:
+- EIP that was save in stack has been corrupted.
+- function pointers that has been corrupted.
+- c++ vtable has been corrupted.
+
+When a function was invoked:
+calling function will:
+1. push the return address (address that follows called function's address) into stack
+2. load the called function's address into EIP 
+
+if coredump happens caused by invlid EIP, ususally, 
+1. when crahing happened, the return address has been pushed into stack. Examing $ESP gets return address. 
+   (gdb) x/ 10x $esp
+2. The address preceding return address is the EIP that cause memory fault.
+3. disassmbling the address gets the instrcution tha caused the crash.
+    (gdb) disas xxxxx
+4. probably, the arguments of call instruction has invalid address.
+e.g. 0x080438c0 <main+73>: call *%eax
+     0x080438c2 <main+73>: add $0x10, %esp
+      
+    (gdb) print $eax
+
+gdb: analyze coredump
+(gdb)bt
+(gdb)info reg
+(gdb)print $eax
+(gdb)x/ 10x $esp
+(gdb)disas main
+(gdb)disas 0x80483c2
+
+function's argument:
+- first arg is located $ebp + 8 ( 8: saved BP, and IP, then, arg)
+   
+    | arg n     |
+    | arg ...   |
+    | arg 1     |  +8
+    | return IP |  
+    | save EBP  |  
+
+
+- argument in intel, from right to left
+- return IP, BP, the arguments in calling funciton's frame.
+- ebp + forwarding to high address that refers to calling function's frame.
+- ebp - to called fucntion's frame.
+
+register:
+- ESP (address of the top of stack, usually being changed implictly by push, pop, leave)
+- EBP (address of the frame specific to funciton, explictly being changed)
+
+varialbes impacted on size of executable file:
+- initialized globals
+not impact:
+- uninitialized static and global
+- local variable (in stack)
+
+
+first:
+bt, 
+if bt failed, (stack was damaged, e.g. eip was corrupted)
+examine esp, ebp that was not corrupted yet.
+
+by the pattern:
+find 8 bytes:
+first 4 is an address of stack
+second 4 of instruction
+rarely fit this pattern
+then find the function address that are not corrupted.
